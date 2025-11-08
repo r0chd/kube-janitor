@@ -1,0 +1,31 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kube-janitor
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kube-janitor
+  template:
+    metadata:
+      labels:
+        app: kube-janitor
+    spec:
+      serviceAccountName: kube-janitor
+      containers:
+        - name: kube-janitor
+          image: kube-janitor:latest
+          imagePullPolicy: IfNotPresent
+          args:
+            - "kube-janitor"
+            - "--config"
+            - "/app/config.yaml"
+          volumeMounts:
+            - name: config-volume
+              mountPath: /app/config.yaml
+              subPath: config.yaml
+      volumes:
+        - name: config-volume
+          configMap:
+            name: kube-janitor-config
