@@ -25,7 +25,18 @@ spec:
             - name: config-volume
               mountPath: /app/config.yaml
               subPath: config.yaml
+
+            - name: k3s-manifests
+              mountPath: /manifests
+              readOnly: true       
+
       volumes:
         - name: config-volume
           configMap:
             name: kube-janitor-config
+
+        - name: k3s-manifests
+          hostPath:
+            path: /tmp/kube-janitor-manifests
+            type: DirectoryOrCreate
+
