@@ -205,6 +205,9 @@ func reconcile(ctx context.Context, dynamicClient dynamic.Interface, liveResourc
 	for key, manifestObj := range manifestResources {
 		processed[key] = true
 
+		// Add managed-by label
+		addManagedByLabel(manifestObj)
+
 		gvr := schema.GroupVersionResource{
 			Group:    key.Group,
 			Version:  key.Version,
@@ -221,26 +224,28 @@ func reconcile(ctx context.Context, dynamicClient dynamic.Interface, liveResourc
 		liveObj, exists := liveResources[key]
 
 		if !exists {
-			// Create new resource
-			fmt.Printf("Creating %s %s/%s\n", key.Kind, key.Namespace, key.Name)
-			_, err := resourceInterface.Create(ctx, manifestObj, metav1.CreateOptions{})
+			fmt.Printf("Applying %s %s/%s\n", key.Kind, key.Namespace, key.Name)
+			_, err := resourceInterface.Apply(ctx, key.Name, manifestObj, metav1.ApplyOptions{FieldManager: "kube-janitor"})
 			if err != nil {
-				log.Printf("Error creating %s %s/%s: %v", key.Kind, key.Namespace, key.Name, err)
+				log.Printf("Error applying %s %s/%s: %v", key.Kind, key.Namespace, key.Name, err)
 			}
 		} else {
-			// Update existing resource
 			fmt.Printf("Updating %s %s/%s\n", key.Kind, key.Namespace, key.Name)
 			manifestObj.SetResourceVersion(liveObj.GetResourceVersion())
-			_, err := resourceInterface.Update(ctx, manifestObj, metav1.UpdateOptions{})
+			_, err := resourceInterface.Apply(ctx, key.Name, manifestObj, metav1.ApplyOptions{FieldManager: "kube-janitor"})
 			if err != nil {
-				log.Printf("Error updating %s %s/%s: %v", key.Kind, key.Namespace, key.Name, err)
+				log.Printf("Error applying %s %s/%s: %v", key.Kind, key.Namespace, key.Name, err)
 			}
 		}
 	}
 
-	// Delete resources not in manifests (prune)
-	for key := range liveResources {
+	for key, liveObj := range liveResources {
 		if !processed[key] {
+			labels := liveObj.GetLabels()
+			if labels == nil || labels["managed-by"] != "kube-janitor" {
+				continue
+			}
+
 			gvr := schema.GroupVersionResource{
 				Group:    key.Group,
 				Version:  key.Version,
@@ -289,4 +294,13 @@ func getResourceNameFromKind(kind string) string {
 		return lower + "s"
 	}
 	return lower
+}
+
+func addManagedByLabel(obj *unstructured.Unstructured) {
+	labels := obj.GetLabels()
+	if labels == nil {
+		labels = make(map[string]string)
+	}
+	labels["managed-by"] = "kube-janitor"
+	obj.SetLabels(labels)
 }
